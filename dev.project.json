@@ -1,0 +1,13 @@
+{
+  "name": "RoDolls",
+  "tree": {
+    "$className": "DataModel",
+
+    "ServerScriptService": {
+		"$className": "ServerScriptService",
+		"RoDolls": {
+			"$path": "src"
+		}
+    }
+  }
+}
