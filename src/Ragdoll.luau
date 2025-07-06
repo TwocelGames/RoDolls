@@ -102,13 +102,13 @@ end
 function RagDoll:bodyOnDeath(enabled, bodyLifetime)
 	local humanoid = self._humanoid
 	if enabled then
-		self._rig.Archivable = true
+		self.rig.Archivable = true
 		self._deathCheckConnection = humanoid.Died:Connect(function()
 			-- we enable ragdoll and clone the rig in that state (this is to ensure if rig = player character it doesn't get destroyed before the lifetime)
 			self:enable(true)
 			self._humanoid:Destroy()
-			local body = self._rig:Clone()
-			self._rig:Destroy()
+			local body = self.rig:Clone()
+			self.rig:Destroy()
 
 			-- we have to make new humanoid otherwise the new rig will have state = dead which will not allow us to change state to physics
 			local humanoid = Instance.new("Humanoid")
@@ -131,7 +131,7 @@ function RagDoll:bodyOnDeath(enabled, bodyLifetime)
 			end)
 		end)
 	else
-		self._rig.Archivable = false
+		self.rig.Archivable = false
 		if self._deathCheckConnection then
 			self._deathCheckConnection:Disconnect()
 		end
@@ -147,9 +147,9 @@ function RagDoll:destroy()
 		self._deathCheckConnection:Disconnect()
 	end
 
-	if self._rig then
-		rigToRagDoll[self._rig] = nil
-		for _, child in self._rig:GetChildren() do
+	if self.rig then
+		rigToRagDoll[self.rig] = nil
+		for _, child in self.rig:GetChildren() do
 			if not child:IsA("Part") then
 				continue
 			end
@@ -245,7 +245,7 @@ function RagDoll.new(rig, rigType, owner)
 	local ragDoll: types.RagDoll = setmetatable({}, RagDoll) :: any
 	ragDoll._humanoid = humanoid
 	ragDoll._rootPart = humanoidRootPart
-	ragDoll._rig = rig
+	ragDoll.rig = rig
 	ragDoll._motors = motors
 	ragDoll._colliders = colliders
 	ragDoll._sockets = sockets

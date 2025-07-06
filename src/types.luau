@@ -11,11 +11,11 @@ export type RagDoll = {
 	rigType: RigType,
 
 	new: (rig: Model, rigType: RigType, owner: Player?) -> RagDoll,
-
+	rig: Model,
+	
 	_motors: { Motor6D },
 	_sockets: { BallSocketConstraint },
 	_colliders: { Part },
-	_rig: Model,
 	_humanoid: Humanoid,
 	_rootPart: Part,
 	_rootFolder: Folder,
@@ -25,7 +25,5 @@ export type RagDoll = {
 	_deathCheckConnection: RBXScriptConnection?,
 	_healthMonitorConnection: RBXScriptConnection?
 }
-
-local id = 70946618918061
 
 return 0
