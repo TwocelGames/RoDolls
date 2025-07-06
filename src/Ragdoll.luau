@@ -7,18 +7,27 @@ local types = require(script.Parent.types)
 local attachName = config.ATTACHMENT_NAME
 local offsetsR6 = config.R6_ATTACHMENT_OFFSETS
 
+local networkHook: RemoteEvent = (config.NETWORK_HOOK:: any):: RemoteEvent
+if not networkHook.OnServerEvent or not networkHook.OnServerEvent.Connect then
+	error("[RODOLLS][CONFIG] invalid network hook, invalid OnServerEvent")
+end
+if not networkHook.FireClient then
+	error("[RODOLLS][CONFIG] invalid network hook, invalid FireServer")
+end
+
+local rigToRagDoll = {}
+
 local RagDoll: types.RagDoll = {} :: types.RagDoll
 RagDoll["__index"] = RagDoll
 
-function RagDoll:enable()
-	self._isEnabled = true
+function RagDoll:enable(hideFromClient)
+	if self._isEnabled then
+		return
+	end
 	local humanoid = self._humanoid
 	local rootPart = self._rootPart
 	self._lastCFrame = rootPart.CFrame
 
-	if self._rig.Parent then
-		rootPart:SetNetworkOwner(nil)
-	end
 
 	humanoid.AutoRotate = false
 	humanoid.EvaluateStateMachine = false
@@ -36,15 +45,25 @@ function RagDoll:enable()
 		socket.Enabled = true
 	end
 
+	if self._owner and not hideFromClient  then
+		networkHook:FireClient(self._owner, true)
+	end
+
+	-- needed because humanoid cannot exit physics state automatically when health is set to 0
+	self._healthMonitorConnection = humanoid.HealthChanged:Connect(function()
+		humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+	end)
+
+	self._isEnabled = true
 end
 
-function RagDoll:disable()
-	self._isEnabled = false
-	local humanoid = self._humanoid
-
-	if self._owner and self._rig.Parent then
-		self._rootPart:SetNetworkOwner(self._owner)
+function RagDoll:disable(hideFromClient)
+	if not self._isEnabled then
+		return
 	end
+
+	local humanoid = self._humanoid
+	local rootPart = self._rootPart
 
 	for _, socket in self._sockets do
 		socket.Enabled = false
@@ -54,44 +73,61 @@ function RagDoll:disable()
 		motor.Enabled = true
 	end
 
+	for _, part in self._colliders do
+		part.CanCollide = false
+	end
+
 	local lastCFrame = self._lastCFrame
-	local newCFrame = CFrame.new(self._rootPart.Position) + Vector3.new(0, humanoid.HipHeight, 0)
-	self._rootPart:PivotTo(newCFrame * CFrame.Angles(lastCFrame:ToEulerAnglesXYZ()))
+	local newCFrame = CFrame.new(rootPart.Position + Vector3.yAxis * humanoid.HipHeight)
+
+	local _, y, _ = lastCFrame:ToEulerAnglesXYZ()
+	rootPart:PivotTo(newCFrame * CFrame.Angles(0, y, 0))
 
 	humanoid:ChangeState(Enum.HumanoidStateType.None)
 	humanoid.EvaluateStateMachine = true
 	humanoid.AutoRotate = true
 
-	for _, part in self._colliders do
-		part.CanCollide = false
+	if self._owner and not hideFromClient then
+		networkHook:FireClient(self._owner, false)
 	end
+	
+	if self._healthMonitorConnection then
+		self._healthMonitorConnection:Disconnect()
+	end
+
+	self._isEnabled = false
 end
 
 -- Drop's body on death which is cleanedup after reset time
-function RagDoll:bodyOnDeath(enabled, resetTime)
+function RagDoll:bodyOnDeath(enabled, bodyLifetime)
 	local humanoid = self._humanoid
 	if enabled then
 		self._rig.Archivable = true
 		self._deathCheckConnection = humanoid.Died:Connect(function()
-			if not self._isEnabled then
-				self:enable()
-			end
+			-- we enable ragdoll and clone the rig in that state (this is to ensure if rig = player character it doesn't get destroyed before the lifetime)
+			self:enable(true)
 			self._humanoid:Destroy()
 			local body = self._rig:Clone()
+			self._rig:Destroy()
+
+			-- we have to make new humanoid otherwise the new rig will have state = dead which will not allow us to change state to physics
 			local humanoid = Instance.new("Humanoid")
 			humanoid.RequiresNeck = false
 			humanoid.Parent = body
 			humanoid.HipHeight = 2
 			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-			self._humanoid = humanoid
-			self._rootPart = humanoid.RootPart:: Part
-			self._rig:Destroy()
-			self._rig = body
-			self:enable()
+		
+			humanoid.EvaluateStateMachine = false
+			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
 			body.Parent = workspace
-			task.delay(resetTime, function()
+
+			-- we know the orginal rig is destroyed so no point in renabling motors so we just destroy the ragdoll in enabled state
+			self._isEnabled = false
+			self:destroy()
+
+			task.delay(bodyLifetime, function()
 				body:Destroy()
-				self:destroy()
 			end)
 		end)
 	else
@@ -103,37 +139,40 @@ function RagDoll:bodyOnDeath(enabled, resetTime)
 end
 
 function RagDoll:destroy()
-	
 	if self._isEnabled then
 		self:disable()
-	end	
+	end
 
 	if self._deathCheckConnection then
 		self._deathCheckConnection:Disconnect()
 	end
 
-	for _, child in self._rig:GetChildren() do
+	if self._rig then
+		rigToRagDoll[self._rig] = nil
+		for _, child in self._rig:GetChildren() do
+			if not child:IsA("Part") then
+				continue
+			end
 
-		if not child:IsA("Part") then continue end
-
-		for _, item in child:GetChildren() do
-			local name = item.Name
-			if name == "RODOLL" or name == attachName then
-				item:Destroy()
+			for _, item in child:GetChildren() do
+				local name = item.Name
+				if name == "RODOLL" or name == attachName then
+					item:Destroy()
+				end
 			end
 		end
-		
 	end
-
+	
 	table.clear(self)
 	setmetatable(self, nil)
 end
 
-function RagDoll:setNetworkOwner(plr)
-	self._owner = plr
-end
+function RagDoll.new(rig, rigType, owner)
 
-function RagDoll.new(rig, rigType)
+	if rigToRagDoll[rig] then
+		return rigToRagDoll[rig]
+	end
+
 	local humanoid = rig:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
 		error("[RODOLLS][CREATION] invalid rig passed, no humanoid found")
@@ -210,8 +249,22 @@ function RagDoll.new(rig, rigType)
 	ragDoll._motors = motors
 	ragDoll._colliders = colliders
 	ragDoll._sockets = sockets
+	ragDoll._owner = owner
+	ragDoll._rootFolder = rootFolder
+
+	rigToRagDoll[rig] = ragDoll
 
 	return ragDoll
 end
+
+networkHook.OnServerEvent:Connect(function(player)
+	local char = player.Character 
+	if not char then return end
+	local ragDoll = rigToRagDoll[char]
+	if not ragDoll then return end
+	if ragDoll._isEnabled then
+		ragDoll._humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+	end
+end)
 
 return table.freeze(RagDoll)

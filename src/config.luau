@@ -1,5 +1,4 @@
 --!strict
-
 return table.freeze{
 
 	-- The offset of the attachments used in sockets (by removing a part from here you can make that part not ragdoll)
@@ -25,7 +24,8 @@ return table.freeze{
 	},
 
 	ATTACHMENT_NAME = "RODOLLS_ATTACHMENTS",
-
-
-
+	
+	-- Must be a instance/object with a property called .OnServerEvent( must contain :Connect() which takes (player) -> () ) 
+	-- and a method called :FireServer() basically a copy of remoteEvent. use this to implement with custom networking libs
+	NETWORK_HOOK = script.Parent:WaitForChild("Remote")
 }
