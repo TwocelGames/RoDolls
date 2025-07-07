@@ -1,13 +1,22 @@
 --!strict
 --!optimize 2
 
-local Ragdoll
-
 if game:GetService("RunService"):IsClient() then
 	require(script:WaitForChild("client"))
-else
-	Ragdoll = require(script.Ragdoll)
+	return (nil:: any):: lib
 end
 
-return Ragdoll
+local Schematics = require(script:WaitForChild("schematics"))
+local RagDoll = require(script:WaitForChild("Ragdoll"))
+local types = require(script:WaitForChild("types"))
+
+type lib = {
+	new: (rig: Model, rigType: Schematics.RigTypes, owner: Player?) -> types.RagDoll
+}
+
+return {
+	new = RagDoll.new
+} :: lib
+
+
 

@@ -3,268 +3,171 @@
 
 local config = require(script.Parent.config)
 local types = require(script.Parent.types)
+local schematics = require(script.Parent.schematics)
 
-local attachName = config.ATTACHMENT_NAME
-local offsetsR6 = config.R6_ATTACHMENT_OFFSETS
-
-local networkHook: RemoteEvent = (config.NETWORK_HOOK:: any):: RemoteEvent
-if not networkHook.OnServerEvent or not networkHook.OnServerEvent.Connect then
-	error("[RODOLLS][CONFIG] invalid network hook, invalid OnServerEvent")
-end
-if not networkHook.FireClient then
-	error("[RODOLLS][CONFIG] invalid network hook, invalid FireServer")
-end
-
-local rigToRagDoll = {}
-
-local RagDoll: types.RagDoll = {} :: types.RagDoll
+local RagDoll: types.RagDoll = {}:: types.RagDoll
 RagDoll["__index"] = RagDoll
 
-function RagDoll:enable(hideFromClient)
-	if self._isEnabled then
-		return
-	end
+function RagDoll:enable()
+
+	-- update Humanoid
 	local humanoid = self._humanoid
-	local rootPart = self._rootPart
-	self._lastCFrame = rootPart.CFrame
-
-
+	humanoid.RequiresNeck = false
 	humanoid.AutoRotate = false
-	humanoid.EvaluateStateMachine = false
-	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
-	for _, part in self._colliders do
-		part.CanCollide = true
-	end
-
+	-- Disable motors
 	for _, motor in self._motors do
 		motor.Enabled = false
 	end
 
-	for _, socket in self._sockets do
-		socket.Enabled = true
+	-- Enable collisions
+	for _, collider in self._colliders do
+		collider.CanCollide = true
 	end
 
-	if self._owner and not hideFromClient  then
-		networkHook:FireClient(self._owner, true)
-	end
-
-	-- needed because humanoid cannot exit physics state automatically when health is set to 0
-	self._healthMonitorConnection = humanoid.HealthChanged:Connect(function()
-		humanoid:ChangeState(Enum.HumanoidStateType.Dead)
-	end)
-
-	self._isEnabled = true
-end
-
-function RagDoll:disable(hideFromClient)
-	if not self._isEnabled then
-		return
-	end
-
-	local humanoid = self._humanoid
-	local rootPart = self._rootPart
-
-	for _, socket in self._sockets do
-		socket.Enabled = false
-	end
-
-	for _, motor in self._motors do
-		motor.Enabled = true
-	end
-
-	for _, part in self._colliders do
-		part.CanCollide = false
-	end
-
-	local lastCFrame = self._lastCFrame
-	local newCFrame = CFrame.new(rootPart.Position + Vector3.yAxis * humanoid.HipHeight)
-
-	local _, y, _ = lastCFrame:ToEulerAnglesXYZ()
-	rootPart:PivotTo(newCFrame * CFrame.Angles(0, y, 0))
-
-	humanoid:ChangeState(Enum.HumanoidStateType.None)
-	humanoid.EvaluateStateMachine = true
-	humanoid.AutoRotate = true
-
-	if self._owner and not hideFromClient then
-		networkHook:FireClient(self._owner, false)
+	-- Enable Constraints
+	for _, constraint in self._constraints do
+		constraint.Enabled = true
 	end
 	
-	if self._healthMonitorConnection then
-		self._healthMonitorConnection:Disconnect()
-	end
+	-- update state
+	humanoid.EvaluateStateMachine = false
+	humanoid:ChangeState(Enum.HumanoidStateType.Physics)
 
-	self._isEnabled = false
-end
-
--- Drop's body on death which is cleanedup after reset time
-function RagDoll:bodyOnDeath(enabled, bodyLifetime)
-	local humanoid = self._humanoid
-	if enabled then
-		self.rig.Archivable = true
-		self._deathCheckConnection = humanoid.Died:Connect(function()
-			-- we enable ragdoll and clone the rig in that state (this is to ensure if rig = player character it doesn't get destroyed before the lifetime)
-			self:enable(true)
-			self._humanoid:Destroy()
-			local body = self.rig:Clone()
-			self.rig:Destroy()
-
-			-- we have to make new humanoid otherwise the new rig will have state = dead which will not allow us to change state to physics
-			local humanoid = Instance.new("Humanoid")
-			humanoid.RequiresNeck = false
-			humanoid.Parent = body
-			humanoid.HipHeight = 2
-			humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		
-			humanoid.EvaluateStateMachine = false
-			humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-
-			body.Parent = workspace
-
-			-- we know the orginal rig is destroyed so no point in renabling motors so we just destroy the ragdoll in enabled state
-			self._isEnabled = false
-			self:destroy()
-
-			task.delay(bodyLifetime, function()
-				body:Destroy()
-			end)
-		end)
-	else
-		self.rig.Archivable = false
-		if self._deathCheckConnection then
-			self._deathCheckConnection:Disconnect()
-		end
-	end
 end
 
 function RagDoll:destroy()
-	if self._isEnabled then
-		self:disable()
+
+	for _, constraint in self._constraints do
+		constraint:Destroy()
 	end
 
-	if self._deathCheckConnection then
-		self._deathCheckConnection:Disconnect()
+	for _, attachment in self._attachments do
+		attachment:Destroy()
 	end
 
-	if self.rig then
-		rigToRagDoll[self.rig] = nil
-		for _, child in self.rig:GetChildren() do
-			if not child:IsA("Part") then
-				continue
-			end
-
-			for _, item in child:GetChildren() do
-				local name = item.Name
-				if name == "RODOLL" or name == attachName then
-					item:Destroy()
-				end
-			end
-		end
-	end
+	self._rootPartDestroyingWatch:Disconnect()
 	
 	table.clear(self)
 	setmetatable(self, nil)
+	self = nil:: any
 end
 
 function RagDoll.new(rig, rigType, owner)
+	local schematic = schematics[rigType]
+	assert(schematic, "[RODOLLS][RIG-BUILDER] failed to build rig, no schematic found for given rigType, rigType="..rigType)
 
-	if rigToRagDoll[rig] then
-		return rigToRagDoll[rig]
-	end
+	local self: types.RagDoll = setmetatable({}, RagDoll):: any
 
-	local humanoid = rig:FindFirstChildOfClass("Humanoid")
-	if not humanoid then
-		error("[RODOLLS][CREATION] invalid rig passed, no humanoid found")
-	end
+	-- Verify Rig
+	local humanoid = rig:WaitForChild("Humanoid", config.WAITFORCHILD_TIMEOUT):: Humanoid?
+	assert(humanoid, "[RODOLLS][RIG-BUILDER] failed to build rig, no humanoid found")
+	self._humanoid = humanoid
 
-	local humanoidRootPart = rig:FindFirstChild("HumanoidRootPart") :: Part
-	if not humanoidRootPart then
-		error("[RODOLLS][CREATION] invalid rig passed, no humanoidRootPart found")
-	end
+	local humanoidRootPart = rig:WaitForChild("HumanoidRootPart", config.WAITFORCHILD_TIMEOUT):: BasePart?
+	assert(humanoidRootPart, "[RODOLLS][RIG-BUILDER] failed to build rig, no humanoidRootPart found")
+	self._humanoidRootPart = humanoidRootPart
 
-	local rootFolder = Instance.new("Folder")
-	rootFolder.Name = "RODOLL"
-	rootFolder.Parent = humanoidRootPart
-
+	local constraints = {}
+	local attachments = {}
 	local motors = {}
-	local sockets = {}
+
+	local parts = {}
+	local usedParts = {}
 	local colliders = {}
+	local limbs = {}
 
+	-- Find Motors & Store Parts
 	for _, descendant in rig:GetDescendants() do
-		if descendant:IsA("Motor6D") then
-			if descendant.Name == "RootJoint" then
-				continue
-			end
+		local name = descendant.Name
+		if name == "RootJoint"	 then continue end
+		if descendant:IsA("BasePart") then
+			parts[name] = descendant
+		elseif descendant:IsA("Motor6D") then
 			table.insert(motors, descendant)
-		elseif descendant:IsA("BasePart") then
-			if rigType == "R6" then
-				local name = descendant.Name
-				local attachOffsets = offsetsR6[name]
-				if not attachOffsets then
-					continue
-				end
-
-				local attachment0 = Instance.new("Attachment")
-				attachment0.Name = attachName
-				attachment0.Parent = humanoidRootPart
-				attachment0.CFrame = attachOffsets[1]
-
-				local attachment1 = Instance.new("Attachment")
-				attachment1.Name = attachName
-				attachment1.Parent = descendant
-				attachment1.CFrame = attachOffsets[2]
-
-				local socket = Instance.new("BallSocketConstraint")
-				socket.Name = "RODOLL_SOCKET"
-				socket.Parent = rootFolder
-				socket.Enabled = false
-				socket.Attachment0 = attachment0
-				socket.Attachment1 = attachment1
-				table.insert(sockets, socket)
-
-				local collider = Instance.new("Part")
-				collider.Position = descendant.Position
-				collider.Parent = rootFolder
-				collider.CanCollide = false
-				collider.Transparency = 1
-				collider.Massless = true
-				collider.Size = Vector3.one
-				table.insert(colliders, collider)
-
-				local colliderWeld = Instance.new("Weld")
-				colliderWeld.Parent = collider
-				colliderWeld.Part0 = descendant
-				colliderWeld.Part1 = collider
-			end
 		end
 	end
 
-	humanoid.RequiresNeck = false
+	-- Build Rig
+	for _, constraintSchematic in schematic.Constraints do
+		local part0 = parts[constraintSchematic.Part0]
+		assert(part0, "[RODOLLS][RIG-BUILDER] failed to build rig, no part0 found for constraint, part0="..constraintSchematic.Part0)
+		local part1 = parts[constraintSchematic.Part1]
+		assert(part1, "[RODOLLS][RIG-BUILDER] failed to build rig, no part1 found for constraint, part1="..constraintSchematic.Part1)
+		
 
-	local ragDoll: types.RagDoll = setmetatable({}, RagDoll) :: any
-	ragDoll._humanoid = humanoid
-	ragDoll._rootPart = humanoidRootPart
-	ragDoll.rig = rig
-	ragDoll._motors = motors
-	ragDoll._colliders = colliders
-	ragDoll._sockets = sockets
-	ragDoll._owner = owner
-	ragDoll._rootFolder = rootFolder
+		local constraint = constraintSchematic.constraint:Clone()
+		constraint.Name = config.CONSTRAINT_NAME
+		constraint.Enabled = false
+		constraint.Parent = rig
+		table.insert(constraints, constraint)
 
-	rigToRagDoll[rig] = ragDoll
+		local attachment0, attachment1 = Instance.new("Attachment"), Instance.new("Attachment")
+		attachment0.Name, attachment1.Name = config.ATTACHMENT_NAME, config.ATTACHMENT_NAME
+		attachment0.CFrame, attachment1.CFrame = constraintSchematic.Offset0, constraintSchematic.Offset1
+		attachment0.Parent, attachment1.Parent = part0, part1
+		table.insert(attachments, attachment0); table.insert(attachments, attachment1)
+		constraint.Attachment0, constraint.Attachment1 = attachment0, attachment1
+		usedParts[part0], usedParts[part1] = true, true
 
-	return ragDoll
-end
-
-networkHook.OnServerEvent:Connect(function(player)
-	local char = player.Character 
-	if not char then return end
-	local ragDoll = rigToRagDoll[char]
-	if not ragDoll then return end
-	if ragDoll._isEnabled then
-		ragDoll._humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+		if config.DEBUG then
+			constraint.Visible = true
+			attachment0.Visible = true
+			attachment1.Visible = true
+		end
 	end
-end)
+
+	for part, _ in usedParts do
+		local collider = Instance.new("Part"):: BasePart
+		collider.Name = config.COLLIDER_NAME
+		collider.CanCollide = false
+		collider.Parent = rig
+		collider.Massless = true
+		collider.Size = part.Size * schematic.ColliderSize
+		table.insert(limbs, part)
+
+		if part.Name == "Head" then
+			local specialMesh = part:FindFirstChildOfClass("SpecialMesh")
+			if specialMesh then
+				local cloneMesh = specialMesh:Clone()
+				cloneMesh.Parent = collider
+			end
+		end
+
+		part.CanCollide = false
+
+		local weld = Instance.new("Weld")
+		weld.Name = "RODOLLS_WELD"
+		weld.Parent = collider
+		weld.Part0 = collider
+		weld.Part1 = part
+
+		if config.DEBUG then
+			part.Transparency = 0.3
+			part.Color = Color3.new(1, 0.070588, 0.070588)
+			collider.Color = Color3.new(0.035294, 1, 0)
+		else
+			collider.Transparency = 1
+		end
+
+		table.insert(colliders, collider)
+	end
+
+	self._constraints = constraints
+	self._attachments = attachments
+	self._motors = motors
+	self._colliders = colliders
+
+	self._rootPartDestroyingWatch = humanoidRootPart.AncestryChanged:Connect(function()
+		if not humanoidRootPart.Parent then
+			self:destroy()
+		end
+	end)
+
+	self._rig = rig
+	self._owner = owner
+	
+	return self
+end
 
 return table.freeze(RagDoll)

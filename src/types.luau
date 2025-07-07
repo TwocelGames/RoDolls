@@ -1,29 +1,40 @@
 --!strict
 
-export type RigType = "R6" | "R15"
+export type ConstraintSchematic = {
+	Part0: string,
+	Part1: string,
+	Offset0: CFrame,
+	Offset1: CFrame,
+	constraint: Constraint,
+}
+
+export type RigSchematic =  { 
+	Constraints: { ConstraintSchematic },
+	ColliderSize: Vector3,
+}
 
 export type RagDoll = {
-	enable: (RagDoll, hideFromClient: boolean?) -> (),
-	disable: (RagDoll, hideFromClient: boolean?) -> (),
-	destroy: (RagDoll) -> (),
-	bodyOnDeath: (RagDoll, enabled: boolean, resetTime: number) -> (),
 
-	rigType: RigType,
-
-	new: (rig: Model, rigType: RigType, owner: Player?) -> RagDoll,
-	rig: Model,
-	
-	_motors: { Motor6D },
-	_sockets: { BallSocketConstraint },
-	_colliders: { Part },
-	_humanoid: Humanoid,
-	_rootPart: Part,
-	_rootFolder: Folder,
+	-- Private Fields
 	_owner: Player?,
-	_lastCFrame: CFrame,
-	_isEnabled: boolean,
-	_deathCheckConnection: RBXScriptConnection?,
-	_healthMonitorConnection: RBXScriptConnection?
+	_constraints: { Constraint },
+	_motors: { Motor6D },
+	_humanoid: Humanoid,
+	_humanoidRootPart: BasePart,
+	_attachments: {Attachment},
+	_rootPartDestroyingWatch: RBXScriptConnection,
+	_colliders: { BasePart },
+
+	-- Public Fields
+	_rig: Model,
+
+	-- Methods
+	new: (rig: Model, schematic: string, owner: Player?) -> RagDoll,
+	destroy: (RagDoll) -> (),
+	enable: (RagDoll) -> (),
+	disable: (RagDoll) -> (),
+
 }
+
 
 return 0
