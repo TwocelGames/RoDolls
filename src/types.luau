@@ -1,15 +1,26 @@
 --!strict
 
-export type ConstraintSchematic = {
-	Part0: string,
-	Part1: string,
-	Offset0: CFrame,
-	Offset1: CFrame,
-	constraint: Constraint,
+export type JointType =
+	"BallSocketConstraint" |
+	"HingeConstraint" |
+	"RodConstraint" |
+	"SpringConstraint" |
+	"PrismaticConstraint" |
+	"PlaneConstraint" |
+	"CylindricalConstraint" |
+	"RopeConstraint" |
+	"SlidingBallConstraint" |
+	"TwistConstraint" |
+	"NoCollisionConstraint" |
+	"RigidConstraint"
+
+export type Joint = {
+	JointType: JointType,
+	Properties: { [string]: any }?
 }
 
 export type RigSchematic =  { 
-	Constraints: { ConstraintSchematic },
+	Joints: { [string]: Joint },
 	ColliderSize: Vector3,
 }
 
@@ -29,7 +40,7 @@ export type RagDoll = {
 	_rig: Model,
 
 	-- Methods
-	new: (rig: Model, schematic: string, owner: Player?) -> RagDoll,
+	new: (rig: Model, rigType: string?, owner: Player?) -> RagDoll,
 	destroy: (RagDoll) -> (),
 	enable: (RagDoll) -> (),
 	disable: (RagDoll) -> (),
