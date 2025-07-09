@@ -21,7 +21,7 @@ export type Joint = {
 
 export type RigSchematic =  { 
 	Joints: { [string]: Joint },
-	ColliderSize: Vector3,
+	Colliders: { [string]: Vector3 }
 }
 
 export type RagDoll = {
@@ -33,17 +33,27 @@ export type RagDoll = {
 	_humanoid: Humanoid,
 	_humanoidRootPart: BasePart,
 	_attachments: {Attachment},
-	_rootPartDestroyingWatch: RBXScriptConnection,
+	_rootPartDestroyingWatch: RBXScriptConnection?,
+	_rigDestroyingWatch: RBXScriptConnection?,
+	_humanoidDeathWatch: RBXScriptConnection?,
+	_humanoidHealthWatch: RBXScriptConnection?,
 	_colliders: { BasePart },
+	_lastCFrame: CFrame,
+	_isEnabled: boolean,
+	_requiresNeckDefault: boolean,
+	_evaluateStateMachineDefault: boolean,
+	_autoRotateDefault: boolean,
+	_rig: Model,
 
 	-- Public Fields
-	_rig: Model,
+	alive: boolean?,
 
 	-- Methods
 	new: (rig: Model, rigType: string?, owner: Player?) -> RagDoll,
 	destroy: (RagDoll) -> (),
 	enable: (RagDoll) -> (),
 	disable: (RagDoll) -> (),
+	destroyOnDeath: (RagDoll) -> RagDoll,
 
 }
 

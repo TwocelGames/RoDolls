@@ -13,6 +13,17 @@ local R6SOCKET: types.Joint = {
 	Properties = {
 		LimitsEnabled = true,
 		TwistLimitsEnabled = true,
+		UpperAngle = 45,
+		TwistLowerAngle = -45,
+		TwistUpperAngle = 45,
+	},
+}
+
+local SHOULDER: types.Joint = {
+	JointType = "BallSocketConstraint",
+	Properties = {
+		LimitsEnabled = true,
+		TwistLimitsEnabled = true,
 		UpperAngle = 30,
 		TwistLowerAngle = -30,
 		TwistUpperAngle = 30,
@@ -27,6 +38,7 @@ local NECK: types.Joint = {
 		UpperAngle = 0,
 		TwistLowerAngle = -40,
 		TwistUpperAngle = 40,
+		MaxFrictionTorque = 78480,
 	},
 }
 
@@ -46,7 +58,7 @@ local HIP: types.Joint = {
 	Properties = {
 		LimitsEnabled = true,
 		TwistLimitsEnabled = true,
-		UpperAngle = 40,
+		UpperAngle = 45,
 		TwistLowerAngle = -3,
 		TwistUpperAngle = 3,
 	},
@@ -104,16 +116,22 @@ local Schematics: { [string]: types.RigSchematic } = {
 			["RootJoint"] = ROOT,
 		},
 
-		ColliderSize = Vector3.new(0.75, 0.75, 0.75),
+		Colliders = {
+			["Right Arm"] =Vector3.new(0.75, 0.75, 0.75),
+			["Left Arm"] = Vector3.new(0.75, 0.75, 0.75),
+			["Right Leg"] = Vector3.new(0.75, 0.75, 0.75),
+			["Left Leg"] = Vector3.new(0.75, 0.75, 0.75),
+			["Head"] = Vector3.new(1, 1, 1),
+		},
 	},
 
 	R15 = {
 		Joints = {
 			["Neck"] = NECK,
-			["Waist"] = WAIST,
+			["Waist"] = ROOT,
 
-			["LeftShoulder"] = R6SOCKET,
-			["RightShoulder"] = R6SOCKET,
+			["LeftShoulder"] = SHOULDER,
+			["RightShoulder"] = SHOULDER,
 
 			["LeftElbow"] = ELBOW,
 			["RightElbow"] = ELBOW,
@@ -133,7 +151,29 @@ local Schematics: { [string]: types.RigSchematic } = {
 			["Root"] = ROOT
 		},
 
-		ColliderSize = Vector3.new(0.7, 0.25, 0.7),
+		Colliders = {
+
+			["Head"] = Vector3.new(1, 1, 1),
+
+			["RightUpperArm"] = Vector3.new(0.75, 0.35, 0.75),
+			["LeftUpperArm"] = Vector3.new(0.75,0.35, 0.75),
+
+			["RightLowerArm"] = Vector3.new(0.75, 0.35, 0.75),
+			["LeftLowerArm"] = Vector3.new(0.75, 0.35, 0.75),
+
+			["RightHand"] = Vector3.new(0.75, 0.15, 0.75),
+			["LeftHand"] = Vector3.new(0.75, 0.15, 0.75),
+
+			["RightUpperLeg"] = Vector3.new(0.75, 0.35, 0.75),
+			["LeftUpperLeg"] = Vector3.new(0.75, 0.35, 0.75),
+
+			["RightLowerLeg"] = Vector3.new(0.75, 0.35, 0.75),
+			["LeftLowerLeg"] = Vector3.new(0.75, 0.35, 0.75),
+
+			["RightFoot"] = Vector3.new(1, 0.25, 1),
+			["LeftFoot"] = Vector3.new(1, 0.25, 1),
+
+		},
 	},
 }
 

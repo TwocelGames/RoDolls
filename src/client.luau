@@ -16,7 +16,6 @@ if not networkHook.FireServer then
 end
 
 local player = Players.LocalPlayer
-local isRagdolled = false
 local connection: RBXScriptConnection?
 
 local function watch(char: Model)
@@ -26,22 +25,18 @@ local function watch(char: Model)
 
 	local humanoid = char:WaitForChild("Humanoid"):: Humanoid
 	connection = humanoid.HealthChanged:Connect(function(health)
-		if isRagdolled and health <= 0 then
-			if humanoid:GetState() == Enum.HumanoidStateType.Dead then return end
-			isRagdolled = false
+		if health <= 0 and humanoid:GetState() ~= Enum.HumanoidStateType.Dead then
 			networkHook:FireServer()
 		end
 	end)
 end
-
-networkHook.OnClientEvent:Connect(function(val: boolean)
-	isRagdolled = val
-end)
 
 player.CharacterAdded:Connect(watch)
 
 if player.Character then
 	watch(player.Character)
 end
+
+print('Required')
 
 return 0
